@@ -35,10 +35,3 @@ coverage/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Local webserver / tooling artifacts
-/.php-server-router.php
-
-# Optional generated reports
-report/
-reports/

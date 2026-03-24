@@ -2,7 +2,7 @@
 
 ## Administration Guide
 
-This document explains how to install, configure, operate, and secure the **SASD GmbH PHP MySQL Health Service** in a production-oriented environment.
+This document explains how to install, configure, operate, and secure the **SASD GmbH PHP MySQL Health Service** when it is deployed as a subfolder service such as `https://api.sasd.de/health`.
 
 The service is intentionally minimal. Its purpose is to provide a safe database connectivity check, return the current database time, and optionally expose a protected `phpinfo()` endpoint for administration and diagnostics.
 
@@ -12,63 +12,88 @@ The service is intentionally minimal. Its purpose is to provide a safe database 
 
 This service provides three main endpoints:
 
-- `GET /api/health`  
+- `GET /health`  
   Performs a live database connectivity check and returns a minimal success or error response.
 
-- `GET /api/health/time`  
+- `GET /health/time`  
   Returns the current time from the MySQL server.
 
-- `GET /api/phpinfo`  
+- `GET /health/phpinfo`  
   Optional administrative diagnostics endpoint. Disabled by default and protected by token authentication.
 
 The service is designed to reveal as little internal information as possible.
 
 ---
 
-## 2. System Requirements
+## 2. Intended Hosting Model
+
+This edition is intended for a shared API host where multiple backend services live below the same domain in separate folders.
+
+Example:
+
+```text
+api.sasd.de/
+  health/
+  taskhost/
+```
+
+In this model, the repository content is uploaded into the `health/` directory. The service then becomes available at:
+
+- `https://api.sasd.de/health`
+- `https://api.sasd.de/health/time`
+- `https://api.sasd.de/health/phpinfo`
+
+This is different from a deployment where the virtual host document root points to a dedicated `public/` directory.
+
+---
+
+## 3. System Requirements
 
 ### Required Software
 
 - PHP 8.1 or newer
 - Composer
 - MySQL or MariaDB
-- Web server such as Apache or Nginx
+- Apache with `mod_rewrite`
 - PHP extensions:
   - `pdo`
   - `pdo_mysql`
 
 ### Recommended Environment
 
-- Linux server
-- HTTPS-enabled reverse proxy or web server
-- Dedicated service account
-- Restricted firewall rules
+- Linux hosting environment
+- HTTPS enabled
+- Dedicated service account where possible
+- Restricted firewall rules or reverse proxy restrictions
 - Monitoring integration
 
 ---
 
-## 3. Installation
+## 4. Installation
 
-### 3.1 Clone the Repository
+### 4.1 Upload the Service into the `health/` Folder
 
-```bash
-git clone https://github.com/Robin-Goerlach/SASD-GmbH-php-mysql-health-service.git
-cd SASD-GmbH-php-mysql-health-service
+Example target path:
+
+```text
+/path/to/api.sasd.de/health/
 ```
 
-### 3.2 Install Dependencies
+### 4.2 Install Dependencies
 
 ```bash
 composer install --no-dev --optimize-autoloader
 ```
 
-### 3.3 Create the Environment File
+This project can also start without Composer's generated autoloader because it contains a small fallback loader in `index.php`. Composer is still recommended.
+
+### 4.3 Create the Environment File
 
 ```bash
 cp .env.example .env
 ```
 
-### 3.4 Adjust the Environment Configuration
+### 4.4 Adjust the Environment Configuration
 
 Edit the `.env` file and set the correct values:
 
@@ -76,6 +101,7 @@ Edit the `.env` file and set the correct values:
 APP_ENV=production
 APP_DEBUG=false
 
+DB_DRIVER=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_NAME=your_database
@@ -89,108 +115,78 @@ APP_PHPINFO_TOKEN=replace-this-with-a-long-random-token
 
 ---
 
-## 4. Web Server Setup
+## 5. Apache Setup
 
-## Apache
+This service is intended to run from inside the `health/` subfolder. The provided `.htaccess` file is part of the service and should remain in the service root.
 
-The document root should point to the `public/` directory.
+Important behaviors provided by the `.htaccess` file:
 
-Example virtual host:
+- enables front-controller routing to `index.php`
+- disables `MultiViews` to avoid `300 Multiple Choices` behavior
+- denies direct access to `src/`, `vendor/`, `docs/`, `.env`, Composer files, and selected metadata files
+- keeps real files and directories accessible only when they are explicitly allowed
 
-```apache
-<VirtualHost *:80>
-    ServerName health.example.com
-    DocumentRoot /var/www/php-health-service/public
+### Required Apache Capabilities
 
-    <Directory /var/www/php-health-service/public>
-        AllowOverride All
-        Require all granted
-    </Directory>
+- `mod_rewrite` must be active
+- `AllowOverride` must permit `.htaccess`
 
-    ErrorLog ${APACHE_LOG_DIR}/php-health-service-error.log
-    CustomLog ${APACHE_LOG_DIR}/php-health-service-access.log combined
-</VirtualHost>
-```
+### Shared Hosting Note
 
-If HTTPS is available, use it and redirect all HTTP traffic to HTTPS.
+On shared hosting, you usually do not control the parent virtual host. In that case, the important step is that the subdomain `api.sasd.de` points to the correct filesystem location that contains the `health/` folder.
 
-## Nginx
-
-Example server block:
-
-```nginx
-server {
-    listen 80;
-    server_name health.example.com;
-
-    root /var/www/php-health-service/public;
-    index index.php;
-
-    location / {
-        try_files $uri /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
-    }
-
-    location ~ /\. {
-        deny all;
-    }
-}
-```
-
-Adapt the PHP-FPM socket path to your system.
+If the subdomain still points to a parking page or wrong folder, the service will not be reached at all.
 
 ---
 
-## 5. File Placement and Permissions
+## 6. File Placement and Permissions
 
 ### Recommended Directory Layout
 
 ```text
-/var/www/php-health-service
-├── public/
-├── src/
-├── vendor/
-├── .env
-├── composer.json
-└── LICENSE
+api-root/
+  health/
+    index.php
+    .htaccess
+    src/
+    vendor/
+    docs/
+    .env
+    composer.json
+    LICENSE
 ```
 
 ### Permissions
 
 - The web server user should be able to read the application files.
 - The `.env` file must not be publicly accessible.
-- Write permissions should be avoided unless logging or cache directories are explicitly needed.
+- Write permissions should be avoided unless logging or runtime files are explicitly needed.
 
 Example:
 
 ```bash
-chown -R www-data:www-data /var/www/php-health-service
-find /var/www/php-health-service -type d -exec chmod 755 {} \;
-find /var/www/php-health-service -type f -exec chmod 644 {} \;
-chmod 600 /var/www/php-health-service/.env
+chown -R www-data:www-data /path/to/api-root/health
+find /path/to/api-root/health -type d -exec chmod 755 {} \;
+find /path/to/api-root/health -type f -exec chmod 644 {} \;
+chmod 600 /path/to/api-root/health/.env
 ```
 
 ---
 
-## 6. Security Hardening
+## 7. Security Hardening
 
-## 6.1 Protect the `.env` File
+### 7.1 Protect the `.env` File
 
 The `.env` file contains sensitive credentials and tokens.
 
 Recommended measures:
 
-- Store `.env` outside the public web root if possible.
-- Deny access to hidden files in the web server configuration.
-- Never commit `.env` to Git.
-- Use strong database passwords.
+- keep `.env` out of version control
+- keep the provided `.htaccess` file in place
+- use strong database passwords
+- use unique credentials per service
 
-## 6.2 Disable Debug Output
+### 7.2 Disable Debug Output
 
 In production:
 
@@ -201,32 +197,32 @@ APP_DEBUG=false
 
 The service should never expose stack traces, DSNs, SQL errors, or database credentials.
 
-## 6.3 Use HTTPS
+### 7.3 Use HTTPS
 
 Always run the service behind HTTPS in production.  
 Do not expose administrative endpoints over plain HTTP.
 
-## 6.4 Restrict Network Access
+### 7.4 Restrict Network Access
 
 If possible, allow access only from trusted monitoring systems, reverse proxies, VPN networks, or internal management networks.
 
 Examples:
 
-- Restrict access by firewall
-- Restrict access by reverse proxy
-- Restrict access by IP allowlist
-- Expose the service only internally
+- restrict access by firewall
+- restrict access by reverse proxy
+- restrict access by IP allowlist
+- expose the service only internally if public access is not required
 
-## 6.5 Secure the `phpinfo()` Endpoint
+### 7.5 Secure the `phpinfo()` Endpoint
 
 The `phpinfo()` endpoint is powerful and should be treated carefully.
 
 Recommendations:
 
-- Keep it disabled unless needed
-- Protect it with a strong token
-- Prefer additional IP restrictions
-- Disable it again after diagnostics are complete
+- keep it disabled unless needed
+- protect it with a strong token
+- prefer additional IP restrictions
+- disable it again after diagnostics are complete
 
 Example:
 
@@ -244,11 +240,11 @@ APP_PHPINFO_TOKEN=use-a-long-random-secret-token
 Request example:
 
 ```http
-GET /api/phpinfo
+GET /health/phpinfo
 X-Health-Token: your-token
 ```
 
-## 6.6 Minimize Information Disclosure
+### 7.6 Minimize Information Disclosure
 
 This service is intentionally minimal. Maintain that principle.
 
@@ -264,7 +260,7 @@ Do not change the service to expose:
 
 ---
 
-## 7. Database User Recommendations
+## 8. Database User Recommendations
 
 Create a dedicated database user with only the permissions required for the health check.
 
@@ -281,12 +277,18 @@ A minimal account is better than reusing a full administrative MySQL account.
 
 ---
 
-## 8. Operational Checks
+## 9. URL Normalization Note
 
-## 8.1 Test the Basic Health Endpoint
+Because `health` is a real directory below the shared host root, some Apache setups may redirect `/health` to `/health/` before the application processes the request. This is normal directory behavior. The application normalizes the trailing slash and will still route the request correctly.
+
+---
+
+## 10. Operational Checks
+
+### 9.1 Test the Basic Health Endpoint
 
 ```bash
-curl https://health.example.com/api/health
+curl https://api.sasd.de/health
 ```
 
 Expected response:
@@ -298,10 +300,10 @@ Expected response:
 }
 ```
 
-## 8.2 Test the Database Time Endpoint
+### 9.2 Test the Database Time Endpoint
 
 ```bash
-curl https://health.example.com/api/health/time
+curl https://api.sasd.de/health/time
 ```
 
 Expected response:
@@ -314,17 +316,17 @@ Expected response:
 }
 ```
 
-## 8.3 Test the `phpinfo()` Endpoint
+### 9.3 Test the `phpinfo()` Endpoint
 
 Only if explicitly enabled:
 
 ```bash
-curl -H "X-Health-Token: your-token" https://health.example.com/api/phpinfo
+curl -H "X-Health-Token: your-token" https://api.sasd.de/health/phpinfo
 ```
 
 ---
 
-## 9. Monitoring and Integration
+## 11. Monitoring and Integration
 
 This service is suitable for use with:
 
@@ -336,13 +338,13 @@ This service is suitable for use with:
 
 Recommended use:
 
-- use `/api/health` for routine monitoring
-- use `/api/health/time` only when DB server time is actually required
-- avoid exposing `/api/phpinfo` to monitoring tools
+- use `/health` for routine monitoring
+- use `/health/time` only when DB server time is actually required
+- avoid exposing `/health/phpinfo` to monitoring tools
 
 ---
 
-## 10. Logging
+## 12. Logging
 
 The service should log failures internally without exposing details to the client.
 
@@ -362,38 +364,38 @@ log_errors = On
 
 ---
 
-## 11. Updating the Service
+## 13. Updating the Service
 
-### 11.1 Backup Current Configuration
+### 12.1 Backup Current Configuration
 
 Before updating:
 
 - back up `.env`
-- back up deployment-specific web server configuration
-- document any local adjustments
+- back up deployment-specific Apache configuration if any
+- document local adjustments
 
-### 11.2 Pull the Latest Version
+### 12.2 Pull the Latest Version
 
 ```bash
 git pull
 composer install --no-dev --optimize-autoloader
 ```
 
-### 11.3 Validate After Update
+### 12.3 Validate After Update
 
 After deployment:
 
-- test `/api/health`
-- test `/api/health/time`
+- test `/health`
+- test `/health/time`
 - confirm that `.env` is still correct
 - confirm that `phpinfo()` is disabled unless intentionally enabled
 - inspect logs for unexpected errors
 
 ---
 
-## 12. Troubleshooting
+## 14. Troubleshooting
 
-## Problem: `status=error`
+### Problem: `status=error`
 
 Possible causes:
 
@@ -409,9 +411,9 @@ Actions:
 - verify `.env`
 - test MySQL reachability
 - check PHP extensions
-- inspect web server and PHP error logs
+- inspect Apache and PHP error logs
 
-## Problem: `phpinfo()` does not work
+### Problem: `phpinfo()` does not work
 
 Possible causes:
 
@@ -427,25 +429,33 @@ Actions:
 - test with query parameter if needed
 - inspect logs
 
-## Problem: blank page or 500 error
+### Problem: `300 Multiple Choices`
+
+Possible cause:
+
+- Apache `MultiViews` is enabled and interferes with path resolution
+
+Action:
+
+- keep `Options -MultiViews` in the provided `.htaccess`
+
+### Problem: parking page or generic hosting error page appears
 
 Possible causes:
 
-- PHP fatal error
-- missing dependencies
-- bad file permissions
-- web server points to wrong document root
+- the subdomain points to the wrong folder
+- DNS or hosting assignment is incomplete
+- the service files were uploaded to a different location than the active document root
 
 Actions:
 
-- check logs
-- verify `composer install`
-- verify `public/` as document root
-- verify PHP version and extensions
+- verify the filesystem target of `api.sasd.de`
+- verify that the `health/` folder exists below the active subdomain root
+- remove or rename a placeholder `index.html` if it masks the application
 
 ---
 
-## 13. Recommended Production Checklist
+## 15. Recommended Production Checklist
 
 Before going live, confirm the following:
 
@@ -455,29 +465,15 @@ Before going live, confirm the following:
 - `phpinfo()` is disabled unless absolutely necessary
 - strong database password is used
 - dedicated limited MySQL user is used
-- web server document root points to `public/`
+- the subdomain points to the correct parent folder
+- the `health/` folder contains the service files
 - logs are enabled
 - firewall rules are in place
 - service is tested with `curl`
 
 ---
 
-## 14. License and Administration Responsibility
-
-This service is intentionally small, but it still handles credentials and infrastructure health information.
-
-The administrator is responsible for:
-
-- secure deployment
-- access control
-- HTTPS setup
-- backup of configuration
-- patching PHP and the web server
-- reviewing logs and unauthorized access attempts
-
----
-
-## 15. Final Recommendation
+## 16. Final Recommendation
 
 Use this service as a minimal health endpoint, not as a diagnostics portal.
 

@@ -30,11 +30,9 @@ final class Env
             $value = trim($value);
 
             if (
-                strlen($value) >= 2 &&
-                (
-                    ($value[0] === '"' && $value[strlen($value) - 1] === '"') ||
-                    ($value[0] === '\'' && $value[strlen($value) - 1] === '\'')
-                )
+                strlen($value) >= 2
+                && (($value[0] === '"' && $value[strlen($value) - 1] === '"')
+                || ($value[0] === "'" && $value[strlen($value) - 1] === "'"))
             ) {
                 $value = substr($value, 1, -1);
             }
@@ -45,10 +43,24 @@ final class Env
 
     public static function get(string $key, ?string $default = null): ?string
     {
-        return $_ENV[$key]
-            ?? $_SERVER[$key]
-            ?? getenv($key) ?: self::$values[$key]
-            ?? $default;
+        if (array_key_exists($key, $_ENV)) {
+            return (string) $_ENV[$key];
+        }
+
+        if (array_key_exists($key, $_SERVER)) {
+            return (string) $_SERVER[$key];
+        }
+
+        $environmentValue = getenv($key);
+        if ($environmentValue !== false) {
+            return (string) $environmentValue;
+        }
+
+        if (array_key_exists($key, self::$values)) {
+            return self::$values[$key];
+        }
+
+        return $default;
     }
 
     public static function getBool(string $key, bool $default = false): bool

@@ -1,6 +1,6 @@
 {
-  "name": "sasd/php-health-service",
-  "description": "Minimal security-focused RESTful PHP health service for MySQL with live DB check and optional protected phpinfo endpoint",
+  "name": "sasdgmbh/php-mysql-health-service",
+  "description": "Minimal security-focused RESTful PHP health service for subfolder deployment under api.sasd.de/health.",
   "type": "project",
   "license": "MIT",
   "require": {
@@ -8,7 +8,7 @@
   },
   "autoload": {
     "psr-4": {
-      "Sasd\\HealthService\\": "src/"
+      "Sasd\HealthService\": "src/"
     }
   }
 }

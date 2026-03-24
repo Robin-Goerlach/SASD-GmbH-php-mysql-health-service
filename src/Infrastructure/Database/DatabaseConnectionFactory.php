@@ -24,7 +24,7 @@ final class DatabaseConnectionFactory
         $pass = Env::get('DB_PASS', '');
         $charset = Env::get('DB_CHARSET', 'utf8mb4');
 
-        if ($dbName === null || $user === null) {
+        if ($dbName === null || $dbName === '' || $user === null || $user === '') {
             throw new RuntimeException('Database configuration incomplete.');
         }
 

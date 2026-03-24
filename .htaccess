@@ -1,0 +1,22 @@
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /health/
+
+    RewriteRule ^index\.php$ - [L]
+
+    RewriteRule ^(?:src|vendor|docs)(?:/|$) - [F,L,NC]
+    RewriteRule ^(?:composer\.(?:json|lock)|\.env(?:\.example)?|\.gitignore|\.editorconfig|README\.md|LICENSE|GITHUB_DESCRIPTION\.txt)$ - [F,L,NC]
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

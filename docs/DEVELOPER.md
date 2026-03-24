@@ -1,20 +1,26 @@
-# Developer.md
+# DEVELOPER.md
 
 ## Developer Guide
 
 This document explains the internal design, development workflow, extension points, and security-related implementation details of the **SASD GmbH PHP MySQL Health Service**.
 
-The service is intentionally small. It is not a general-purpose framework and not a full diagnostics portal. Its goal is to provide a focused, low-noise, security-conscious health API for MySQL-backed environments.
+This edition is specifically aligned with **subfolder deployment** below a shared API host, for example `https://api.sasd.de/health`.
 
 ---
 
 ## 1. Service Purpose
 
-The service currently exposes three endpoints:
+The service exposes three externally visible routes in production:
 
-- `GET /api/health`
-- `GET /api/health/time`
-- `GET /api/phpinfo`
+- `GET /health`
+- `GET /health/time`
+- `GET /health/phpinfo`
+
+Internally, after base path normalization, the application routes to:
+
+- `/`
+- `/time`
+- `/phpinfo`
 
 The two health endpoints are intended for automated checks and operational monitoring. The `phpinfo()` endpoint exists only as an optional administrative aid and is disabled by default.
 
@@ -25,8 +31,6 @@ The core design rule is simple:
 ---
 
 ## 2. Design Goals
-
-The implementation follows a few deliberate design goals:
 
 ### Minimalism
 The codebase is intentionally compact. The project avoids unnecessary framework dependencies, service containers, configuration layers, or complex abstractions.
@@ -40,14 +44,16 @@ The code is structured in small files with simple responsibilities so that it ca
 ### Easy Deployment
 The service can run with Composer, but it also contains a small fallback loading mechanism so the application can still start in very simple deployment situations.
 
+### Shared Hosting Compatibility
+The service is prepared to live in a physical subfolder such as `health/`, while still routing requests as if the service root were `/` internally.
+
 ---
 
 ## 3. Current Project Structure
 
 ```text
-public/
-  index.php
-  .htaccess
+index.php
+.htaccess
 src/
   Bootstrap.php
   Controller/
@@ -59,6 +65,13 @@ src/
   Support/
     Env.php
     JsonResponse.php
+docs/
+  ADMIN.md
+  API_REFERENCE.md
+  CHANGELOG.md
+  CONTRIBUTING.md
+  SECURITY.md
+  TESTING.md
 .env.example
 composer.json
 README.md
@@ -67,20 +80,26 @@ LICENSE
 
 ### Directory Responsibilities
 
-#### `public/`
-Contains the web entry point and Apache rewrite rules. The public web server document root should point here.
+#### `index.php`
+The front controller and application entry point.
+
+#### `.htaccess`
+Apache rewrite and access-control rules for subfolder deployment.
 
 #### `src/`
 Contains the application logic.
 
 #### `src/Controller/`
-Contains request handlers for the currently supported endpoints.
+Contains request handlers for the supported endpoints.
 
 #### `src/Infrastructure/Database/`
 Contains database-specific connection logic.
 
 #### `src/Support/`
-Contains small low-level helpers such as environment loading and JSON response output.
+Contains low-level helpers such as environment loading and JSON response output.
+
+#### `docs/`
+Contains operator, developer, API, security, and testing documentation.
 
 ---
 
@@ -89,10 +108,10 @@ Contains small low-level helpers such as environment loading and JSON response o
 The request flow is intentionally straightforward.
 
 ### Step 1: Front Controller
-The web server routes incoming requests to `public/index.php`.
+Apache routes incoming requests inside the `health/` folder to `index.php` through `.htaccess`.
 
-### Step 2: Environment Loading
-`public/index.php` makes sure the environment loader is available, then either loads Composer's autoloader or falls back to manually requiring the essential classes.
+### Step 2: Environment Loading and Class Loading
+`index.php` loads Composer's autoloader when it exists. If it does not exist, the script falls back to manual `require_once` statements for the small set of application classes.
 
 ### Step 3: Bootstrap
 `Bootstrap::run()` loads `.env`, reads the HTTP method and path, normalizes the request path, and routes to the corresponding controller.
@@ -111,13 +130,19 @@ JSON responses are sent by `JsonResponse`. The `phpinfo()` endpoint returns HTML
 
 ## 5. Routing Details
 
-Routing currently lives in `src/Bootstrap.php`.
+Routing lives in `src/Bootstrap.php`.
 
-Supported routes:
+### External Production Routes
 
-- `GET /api/health`
-- `GET /api/health/time`
-- `GET /api/phpinfo`
+- `GET /health`
+- `GET /health/time`
+- `GET /health/phpinfo`
+
+### Internal Normalized Routes
+
+- `GET /`
+- `GET /time`
+- `GET /phpinfo`
 
 Anything else returns:
 
@@ -129,18 +154,46 @@ Anything else returns:
 ```
 
 ### Base Directory Handling
-The bootstrap contains a small path normalization step that removes an optional script base directory. This is useful when the application is deployed in a subdirectory instead of directly at the web root.
 
-That means the service can often work both here:
+The bootstrap removes the service base directory from the request path by looking at `dirname($_SERVER['SCRIPT_NAME'])`.
 
-- `https://example.com/api/health`
-- `https://example.com/health-service/api/health`
+Examples:
 
-provided the server is configured correctly.
+- request URI `/health/time`
+- script name `/health/index.php`
+- detected base directory `/health`
+- normalized route `/time`
+
+This keeps the actual routing logic independent from the deployment folder name.
+
+The same files can therefore run:
+
+- locally at `/`
+- in production at `/health`
+
+provided the surrounding server configuration is correct.
 
 ---
 
-## 6. Configuration Model
+## 6. Apache and `.htaccess` Notes
+
+This project no longer assumes a dedicated `public/` directory. The service root itself is the web entry point for the specific service folder.
+
+The `.htaccess` file is therefore more important than in a separated public-webroot model.
+
+Main tasks of `.htaccess` in this project:
+
+- disable `MultiViews`
+- enable front-controller routing
+- preserve direct access only for existing allowed files
+- deny direct access to internal code and documentation folders
+- deny direct access to selected metadata and secret-related files
+
+This is especially important on shared hosting where the service folder itself is directly reachable.
+
+---
+
+## 7. Configuration Model
 
 Configuration is loaded from `.env` using the custom `Env` helper.
 
@@ -162,359 +215,151 @@ APP_PHPINFO_ENABLED=false
 APP_PHPINFO_TOKEN=replace-this-with-a-long-random-token
 ```
 
-### Important Notes About `Env`
+### Notes About `Env`
 
 The environment loader is intentionally simple.
 
 It currently supports:
+
 - plain `KEY=value` pairs
 - quoted values
 - comment lines starting with `#`
 
 It does **not** currently support:
+
 - nested variable expansion
 - multiline values
 - advanced escaping rules
 - schema validation
 - automatic type conversion except for `getBool()`
 
-This is acceptable for the current scope, but developers should know that it is a deliberately lightweight loader, not a full-featured dotenv implementation.
+This is acceptable for the current scope, but developers should know that it is a deliberately lightweight loader, not a full-featured configuration framework.
 
 ---
 
-## 7. Database Layer
+## 8. Controller Behavior
 
-Database access is currently handled by `DatabaseConnectionFactory`.
+### `HealthController`
 
-### Current State
-- only `mysql` is supported
-- the connection uses PDO
-- `PDO::ATTR_ERRMODE` is set to `PDO::ERRMODE_EXCEPTION`
-- emulated prepares are disabled
-- default fetch mode is associative arrays
+#### `status()`
+- opens a database connection
+- executes `SELECT 1`
+- returns JSON success if the operation works
+- returns generic `503` JSON on failure
+- logs failures internally through `error_log()`
 
-### MySQL Query Behavior
-The health endpoint uses:
-
-```sql
-SELECT 1
-```
-
-The time endpoint uses:
+#### `time()`
+- opens a database connection
+- executes:
 
 ```sql
 SELECT DATE_FORMAT(NOW(), '%d.%m.%Y:%H:%i') AS db_time
 ```
 
-### Driver Restriction
-At the moment, any driver other than `mysql` causes a runtime exception.
-
-This is intentional. It keeps the implementation explicit and avoids pretending that multiple databases are supported when only one has been tested.
-
----
-
-## 8. Controllers
-
-### `HealthController`
-Responsible for the two JSON-based database endpoints.
-
-#### `status()`
-- creates a PDO connection
-- executes `SELECT 1`
-- returns a minimal success response
-- logs failures internally
-- returns HTTP 503 on failure
-
-#### `time()`
-- creates a PDO connection
-- queries the current database time
-- returns it as `db_time`
-- logs failures internally
-- returns HTTP 503 on failure
+- returns the formatted database time
+- returns generic `503` JSON on failure
+- logs failures internally through `error_log()`
 
 ### `PhpInfoController`
-Responsible for the optional `phpinfo()` endpoint.
 
-#### Behavior
+#### `show()`
 - checks whether `APP_PHPINFO_ENABLED` is true
-- reads the expected token from `APP_PHPINFO_TOKEN`
-- accepts the provided token from either:
-  - `X-Health-Token` header
-  - `token` query parameter
-- returns `404 Not Found` if disabled
-- returns `403 Forbidden` if the token is wrong
-- calls `phpinfo()` only if both checks succeed
-
-### Why 404 When Disabled?
-Returning `404` instead of a descriptive message makes the endpoint less obvious to casual probing.
+- extracts the token from `X-Health-Token` or `?token=`
+- compares it using `hash_equals()`
+- returns `404` when disabled
+- returns `403` when authentication fails
+- executes `phpinfo()` only when both checks succeed
 
 ---
 
-## 9. Response Strategy
+## 9. JSON Response Behavior
 
-### JSON Endpoints
-JSON responses are intentionally minimal.
+`JsonResponse` is intentionally small.
 
-Success example:
+It currently:
 
-```json
-{
-  "status": "ok",
-  "database": "ok"
-}
-```
+- sets the HTTP status code
+- sends JSON content type headers
+- disables caching
+- adds `X-Content-Type-Options: nosniff`
+- suppresses the response body for `HEAD` requests
 
-Time example:
-
-```json
-{
-  "status": "ok",
-  "database": "ok",
-  "db_time": "24.03.2026:16:42"
-}
-```
-
-Failure example:
-
-```json
-{
-  "status": "error"
-}
-```
-
-### Error Disclosure Policy
-The client should never receive:
-- SQL exceptions
-- DSNs
-- stack traces
-- file paths
-- usernames
-- raw connection errors
-
-This policy is one of the most important rules in the project.
+The latter makes the health endpoint more usable for monitoring tools that prefer `HEAD`.
 
 ---
 
 ## 10. Local Development
 
-### Requirements
-- PHP 8.1+
-- Composer
-- MySQL or MariaDB
-- `pdo_mysql`
-
-### Setup
+A simple local run is enough for most work:
 
 ```bash
-composer install
-cp .env.example .env
+php -S 127.0.0.1:8080 index.php
 ```
 
-Adjust `.env` for your local database.
+Then use these local routes:
 
-### Run Locally
+- `http://127.0.0.1:8080/`
+- `http://127.0.0.1:8080/time`
+- `http://127.0.0.1:8080/phpinfo`
 
-```bash
-php -S 127.0.0.1:8080 -t public public/index.php
-```
-
-### Quick Tests
-
-```bash
-curl http://127.0.0.1:8080/api/health
-curl http://127.0.0.1:8080/api/health/time
-curl -H "X-Health-Token: your-token" http://127.0.0.1:8080/api/phpinfo
-```
+The subfolder prefix `/health` does not exist in this local mode unless you deliberately emulate the parent host structure.
 
 ---
 
-## 11. Composer and Fallback Loading
+## 11. Manual Test Recommendations
 
-The front controller first tries to load Composer's autoloader:
+Developers should at least verify the following after changes:
 
-```php
-$autoload = dirname(__DIR__) . '/vendor/autoload.php';
-```
+- `/` returns success with valid DB configuration
+- `/time` returns a database time string
+- wrong DB credentials return generic `503` JSON
+- unknown routes return generic `404` JSON
+- `phpinfo()` is unreachable when disabled
+- `phpinfo()` returns `403` with missing or wrong token
+- direct access to `src/` and `.env` is blocked by Apache
 
-If that file does not exist, the application falls back to explicitly requiring the core source files.
-
-### Why This Exists
-This makes the service more robust in small or improvised environments and keeps the code runnable even when the autoloader is unavailable.
-
-### Limitation
-The fallback is manual. If new source files are added later and Composer is not used, the fallback list must also be updated.
-
-Developers should remember this whenever they add classes.
+See `docs/TESTING.md` for a fuller checklist.
 
 ---
 
-## 12. Security Considerations for Developers
+## 12. Extending the Service
 
-### Keep the Service Quiet
-Avoid adding debug-heavy endpoints, internal dumps, or diagnostic details to public responses.
+This service is intentionally small. If you add features, preserve the architectural spirit.
 
-### Avoid Credential Exposure
-Do not log connection strings, raw passwords, or sensitive request data.
+Good additions might include:
 
-### Treat `phpinfo()` as Dangerous
-`phpinfo()` can reveal loaded modules, paths, configuration flags, and environment details. It should remain disabled by default and protected by a strong token when enabled.
+- additional narrowly scoped health-related endpoints
+- small security improvements
+- small operational improvements
+- additional tests or validation helpers
 
-### Prefer Principle of Least Privilege
-The database user should have only the minimum permissions needed for connectivity testing.
+Be careful with additions that:
 
-### Avoid Feature Drift
-This service is a health endpoint, not an admin panel, not a schema browser, and not a monitoring dashboard.
-
----
-
-## 13. Logging Philosophy
-
-The code currently uses `error_log()` for internal failure reporting.
-
-This is sufficient for the current scope, but developers should understand the intended behavior:
-
-- detailed enough for administrators to investigate failures
-- not detailed enough to expose secrets by accident
-- small and dependency-light
-
-### Possible Future Improvement
-If the project grows, a structured logger abstraction could be introduced. For now, plain `error_log()` keeps the footprint small.
+- expose internal information
+- turn the service into a broad diagnostics portal
+- introduce large dependencies without strong justification
+- make responses too verbose
 
 ---
 
-## 14. How to Extend the Service
+## 13. Typical Pitfalls
 
-### Add a New Endpoint
-To add an endpoint cleanly:
+### Wrong Path Assumptions
+Do not hardcode production paths like `/api/health` into the application logic. The internal routes should remain `/`, `/time`, and `/phpinfo`.
 
-1. add a new controller method or a new controller class
-2. register the route in `Bootstrap.php`
-3. keep the response minimal
-4. make sure failures do not leak internals
-5. update `README.md`, `ADMIN.md`, and this file
+### Shared Hosting Confusion
+If the subdomain points to the wrong parent folder, the application will not be reached regardless of how correct the PHP code is.
 
-### Add a New Database Driver
-To add PostgreSQL or Oracle later:
+### `MultiViews`
+If `Options -MultiViews` is removed, Apache may produce confusing path resolution behavior such as `300 Multiple Choices`.
 
-1. extend `DatabaseConnectionFactory`
-2. build a driver-specific DSN branch
-3. adjust driver-specific health/time SQL
-4. document the new `.env` variables
-5. test each driver separately
-
-Do not reuse MySQL-specific queries for other drivers without explicit adaptation.
-
-### Add Authentication for More Admin Endpoints
-If the service gains more sensitive endpoints in the future, token handling should likely be extracted into a dedicated helper or middleware-like structure instead of being duplicated in multiple controllers.
+### Direct File Exposure
+Because the service root is web-facing in this deployment model, Apache access rules are part of the security model. Keep `.htaccess` intact.
 
 ---
 
-## 15. Suggested Refactoring Paths
+## 14. Final Recommendation
 
-The current structure is intentionally small and acceptable for version 1. However, if the service grows, these are sensible next steps:
+Treat this repository as a compact service package for a single subfolder API service.
 
-### Extract a Router
-Routing is currently simple enough to stay in `Bootstrap`. If the number of routes grows, a dedicated router class would improve clarity.
-
-### Add a Config Wrapper
-`Env` is sufficient now, but a higher-level config class could centralize validation and defaults.
-
-### Introduce Services
-If business logic becomes more complex, controllers should stay thin and delegate to dedicated service classes.
-
-### Add Tests
-The project would benefit from automated tests once the code starts evolving more actively.
-
----
-
-## 16. Testing Guidance
-
-There are currently no automated tests in the minimal version.
-
-### Recommended First Tests
-If you add a test suite, start with:
-
-- route resolution tests
-- environment loader tests
-- token validation behavior tests
-- 404 and 403 behavior tests
-- database failure handling tests
-
-### Integration Testing
-The health endpoints are best validated with real integration tests against a disposable MySQL instance.
-
-### Manual Testing Still Matters
-Because the service is tiny and infrastructure-focused, manual endpoint checks with `curl` are still valuable even after automated tests are introduced.
-
----
-
-## 17. Common Developer Pitfalls
-
-### Forgetting the Fallback Loader
-If you add new classes but forget to update the fallback `require_once` list in `public/index.php`, the app may work with Composer but fail without it.
-
-### Making Error Messages Too Verbose
-It is easy to accidentally leak internal information while debugging. Keep public responses minimal.
-
-### Growing the Scope Too Fast
-The service should remain focused. Avoid turning it into a generic diagnostics API.
-
-### Breaking Subdirectory Deployment
-Be careful when changing path handling in `Bootstrap.php`. The current normalization helps when the service is deployed below a base path.
-
-### Assuming `.env` Is a Full Dotenv System
-It is not. Keep configuration syntax simple unless the loader is intentionally upgraded.
-
----
-
-## 18. Coding Style Expectations
-
-For future contributions, keep the following style principles:
-
-- prefer small classes with clear responsibilities
-- use strict types
-- keep method names explicit and predictable
-- avoid clever abstractions without strong value
-- comment where behavior is non-obvious
-- preserve the security-first response policy
-- keep the public API stable unless there is a strong reason to change it
-
----
-
-## 19. Recommended Contribution Workflow
-
-A practical workflow for further development:
-
-1. create a branch for the change
-2. keep the scope small
-3. test the affected endpoints manually
-4. review error behavior carefully
-5. update documentation when behavior changes
-6. commit with a clear message
-
-Example commit messages:
-
-```text
-feat: add PostgreSQL driver support
-fix: harden phpinfo token validation
-docs: update developer and admin documentation
-refactor: extract route handling from bootstrap
-```
-
----
-
-## 20. Final Development Principle
-
-This service should remain:
-
-- small
-- predictable
-- easy to audit
-- easy to deploy
-- hard to misuse
-
-Whenever you change the code, ask this question:
-
-**Does this change keep the service minimal, secure, and operationally useful without exposing more than necessary?**
-
-If the answer is no, the change probably does not belong in this project.
+Keep the code readable, the routing simple, and the external responses intentionally quiet.

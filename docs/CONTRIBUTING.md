@@ -18,6 +18,7 @@ When contributing, please keep these goals in mind:
 - avoid information leakage
 - document behavior clearly
 - keep the public API stable unless there is a strong reason to change it
+- preserve compatibility with the intended `api.sasd.de/health` subfolder deployment model
 
 ---
 
@@ -26,10 +27,11 @@ When contributing, please keep these goals in mind:
 Please review the existing documentation first:
 
 - `README.md`
-- `ADMIN.md`
-- `Developer.md`
-- `API_REFERENCE.md`
-- `SECURITY.md`
+- `docs/ADMIN.md`
+- `docs/DEVELOPER.md`
+- `docs/API_REFERENCE.md`
+- `docs/SECURITY.md`
+- `docs/TESTING.md`
 
 If your change affects public behavior, configuration, or operational guidance, please update the relevant documentation as part of the same contribution.
 
@@ -66,6 +68,7 @@ Please follow these conventions:
 - preserve the service's minimal external responses
 - do not expose secrets, DSNs, SQL errors, or stack traces
 - keep security implications in mind before adding new endpoints or behavior
+- keep the subfolder path normalization behavior intact unless there is a strong reason to redesign it
 
 If you introduce a structural change, explain why it is needed and what alternatives were considered.
 
@@ -75,8 +78,8 @@ If you introduce a structural change, explain why it is needed and what alternat
 
 Clear commit messages are appreciated. Examples:
 
-- `feat: add protected database version endpoint`
-- `fix: prevent token bypass on phpinfo route`
+- `feat: add token validation tests for phpinfo endpoint`
+- `fix: normalize subfolder routes for shared hosting`
 - `docs: improve installation and hardening guidance`
 
 ---
@@ -99,7 +102,7 @@ Small, well-scoped pull requests are preferred over large mixed changes.
 
 Please do **not** report security vulnerabilities through public issues or pull requests.
 
-See `SECURITY.md` for the project's security reporting guidance.
+See `docs/SECURITY.md` for the project's security reporting guidance.
 
 ---
 

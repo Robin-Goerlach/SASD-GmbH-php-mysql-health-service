@@ -8,9 +8,13 @@ This changelog follows the spirit of **Keep a Changelog** and uses **Semantic Ve
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Placeholder section for upcoming changes.
+- Reworked the project for subfolder deployment under paths such as `/health` on a shared API host.
+- Replaced the dedicated `public/` web entry model with a service-root front controller and service-root `.htaccess`.
+- Updated routing from `/api/health` style paths to `/health`, `/health/time`, and `/health/phpinfo`.
+- Added Apache rules to disable `MultiViews` and deny direct access to internal folders and selected metadata files.
+- Updated the documentation set to match the shared-hosting and subfolder deployment model.
 
 ---
 
@@ -22,14 +26,8 @@ This changelog follows the spirit of **Keep a Changelog** and uses **Semantic Ve
 - Basic live database connectivity endpoint.
 - Database time endpoint returning the current time from MySQL.
 - Optional token-protected `phpinfo()` endpoint.
-- Minimal routing entry point through `public/index.php`.
 - Lightweight `.env` loading without exposing sensitive values in responses.
 - English project documentation.
-- Administration guide.
-- Developer guide.
-- API reference.
-- Security policy.
-- Initial EditorConfig support.
 
 ### Security
 
@@ -39,4 +37,4 @@ This changelog follows the spirit of **Keep a Changelog** and uses **Semantic Ve
 
 ### Notes
 
-- This is the first public baseline release of the service.
+- This was the first baseline release before the later subfolder-deployment adjustments.

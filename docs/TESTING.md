@@ -2,108 +2,78 @@
 
 ## Testing Guide
 
-This document explains how to test the **SASD GmbH PHP MySQL Health Service** during development, deployment, and routine operation.
+This document describes how to validate the **SASD GmbH PHP MySQL Health Service** in development, staging, and production-like deployments.
 
-The service is intentionally small, so testing should also remain simple, focused, and practical. The goal is not to build a large test framework around the service, but to verify that the essential behavior is correct, stable, and secure.
+This edition assumes production deployment under a subfolder such as `https://api.sasd.de/health`, while local development may run directly at `/`.
 
 ---
 
 ## 1. Testing Goals
 
-The service should be tested to confirm the following:
+The main goals of testing this service are:
 
-- the application starts correctly
-- routing works as expected
-- the database connection check works
-- the database time endpoint returns a valid value
-- the `phpinfo()` endpoint remains disabled unless explicitly enabled
-- sensitive information is not exposed in error cases
-- invalid routes return the expected response
-- configuration errors fail safely
+- verify that routing works correctly in the intended subfolder deployment model
+- verify that database checks work with valid credentials
+- verify that failure behavior remains intentionally minimal
+- verify that `phpinfo()` stays protected
+- verify that internal files are not directly exposed
+- verify that Apache path handling does not produce `300 Multiple Choices` or other unexpected behavior
 
 ---
 
-## 2. Types of Tests
+## 2. Minimal Local Smoke Test
 
-For this project, testing can be divided into four practical categories.
-
-### 2.1 Syntax Checks
-
-These tests verify that the PHP files are syntactically valid.
-
-Example:
+Run the service locally:
 
 ```bash
-find . -name "*.php" -print0 | xargs -0 -n1 php -l
+php -S 127.0.0.1:8080 index.php
 ```
 
-This is a quick and useful baseline check before every commit or deployment.
-
-### 2.2 Manual Endpoint Tests
-
-These tests verify that the service behaves correctly from a user's perspective.
-
-Typical tools:
-
-- `curl`
-- browser
-- Postman
-- Insomnia
-- Bruno
-
-### 2.3 Integration Tests
-
-These tests verify the interaction between the application and a real MySQL or MariaDB database.
-
-They are especially useful after:
-
-- changing database credentials
-- moving to a new server
-- changing routing logic
-- changing environment handling
-- changing response behavior
-
-### 2.4 Security Behavior Checks
-
-These tests confirm that the service does not reveal internal details.
-
-This is very important for this project because the main value of the service is not only that it works, but that it stays quiet when something goes wrong.
-
----
-
-## 3. Pre-Test Requirements
-
-Before testing, make sure the following is available:
-
-- PHP 8.1 or newer
-- Composer dependencies installed
-- `.env` file configured
-- MySQL or MariaDB reachable
-- web server document root pointing to `public/`
-- `pdo_mysql` enabled
-
-You can verify PHP modules with:
+Then test:
 
 ```bash
-php -m | grep pdo
+curl -i http://127.0.0.1:8080/
+curl -i http://127.0.0.1:8080/time
+curl -i http://127.0.0.1:8080/phpinfo
 ```
 
+Expected local behavior:
+
+- `/` returns `200` or `503` depending on DB availability
+- `/time` returns `200` or `503` depending on DB availability
+- `/phpinfo` returns `404` when disabled
+
 ---
 
-## 4. Basic Test Scenarios
+## 3. Production-Oriented Smoke Test
 
-## 4.1 Health Endpoint Returns Success
+When testing on Apache, keep in mind that `/health` may redirect to `/health/` before the application takes over. That behavior is acceptable as long as the redirected request reaches the service and returns the expected application response.
 
-Request:
+
+For the intended deployment model, test the production-style URLs:
 
 ```bash
-curl http://127.0.0.1:8080/api/health
+curl -i https://api.sasd.de/health
+curl -i https://api.sasd.de/health/time
+curl -i https://api.sasd.de/health/phpinfo
 ```
 
 Expected behavior:
 
+- `/health` returns JSON health information or generic `503`
+- `/health/time` returns JSON database time information or generic `503`
+- `/health/phpinfo` returns `404` unless explicitly enabled
+
+---
+
+## 4. Happy Path Tests
+
+### 4.1 Health Check with Valid DB Configuration
+
+Expected:
+
 - HTTP status `200`
-- JSON response contains:
+- JSON body contains:
 
 ```json
 {
@@ -112,85 +82,50 @@ Expected behavior:
 }
 ```
 
-This confirms that:
+### 4.2 Database Time with Valid DB Configuration
 
-- routing works
-- environment values are read
-- database connection is possible
-- the response format is correct
-
----
-
-## 4.2 Database Time Endpoint Returns DB Time
-
-Request:
-
-```bash
-curl http://127.0.0.1:8080/api/health/time
-```
-
-Expected behavior:
+Expected:
 
 - HTTP status `200`
-- JSON response contains `db_time`
-- format should look like `24.03.2026:16:42`
+- JSON body contains `db_time`
 
-Example response:
+### 4.3 phpinfo with Explicit Enablement and Valid Token
 
-```json
-{
-  "status": "ok",
-  "database": "ok",
-  "db_time": "24.03.2026:16:42"
-}
-```
-
-This confirms that the service not only connects to the database, but also successfully runs a query.
-
----
-
-## 4.3 Unknown Route Returns Not Found
-
-Request:
-
-```bash
-curl -i http://127.0.0.1:8080/api/does-not-exist
-```
-
-Expected behavior:
-
-- HTTP status `404`
-- minimal error response
-
-This confirms that undefined routes are rejected correctly.
-
----
-
-## 4.4 Wrong Database Credentials Fail Safely
-
-Temporarily place invalid values in `.env`, for example:
+Set in `.env`:
 
 ```env
-DB_PASS=wrong-password
+APP_PHPINFO_ENABLED=true
+APP_PHPINFO_TOKEN=your-token
 ```
 
-Then call:
+Test:
 
 ```bash
-curl -i http://127.0.0.1:8080/api/health
+curl -i -H "X-Health-Token: your-token" https://api.sasd.de/health/phpinfo
 ```
 
-Expected behavior:
+Expected:
+
+- HTTP status `200`
+- HTML output from `phpinfo()`
+
+---
+
+## 5. Failure Path Tests
+
+### 5.1 Invalid Database Credentials
+
+Break the DB credentials intentionally in `.env` and test:
+
+```bash
+curl -i https://api.sasd.de/health
+curl -i https://api.sasd.de/health/time
+```
+
+Expected:
 
 - HTTP status `503`
-- generic JSON error response
-- no DSN
-- no database host
-- no username
-- no SQL error
-- no stack trace
-
-Example response:
+- body:
 
 ```json
 {
@@ -198,264 +133,160 @@ Example response:
 }
 ```
 
-This is one of the most important tests in the entire project.
+No stack trace, DSN, SQL error, or sensitive internal message should appear.
 
----
+### 5.2 Unknown Route
 
-## 4.5 `phpinfo()` Is Disabled by Default
-
-Request:
+Test:
 
 ```bash
-curl -i http://127.0.0.1:8080/api/phpinfo
+curl -i https://api.sasd.de/health/unknown
 ```
 
-Expected behavior:
+Expected:
 
-- endpoint should not reveal PHP information unless explicitly enabled
-- access should fail when disabled
+- HTTP status `404`
+- body:
 
-This confirms that the administrative endpoint is not accidentally exposed.
-
----
-
-## 4.6 `phpinfo()` Works Only with Valid Token
-
-Set in `.env`:
-
-```env
-APP_PHPINFO_ENABLED=true
-APP_PHPINFO_TOKEN=test-token
+```json
+{
+  "status": "error",
+  "message": "Not Found"
+}
 ```
 
-Request without token:
+### 5.3 phpinfo Disabled
+
+Test:
 
 ```bash
-curl -i http://127.0.0.1:8080/api/phpinfo
+curl -i https://api.sasd.de/health/phpinfo
 ```
 
-Expected behavior:
+Expected:
 
-- access denied
+- HTTP status `404`
+- plain text body `Not Found`
 
-Request with token header:
+### 5.4 phpinfo Wrong Token
+
+Test:
 
 ```bash
-curl -i -H "X-Health-Token: test-token" http://127.0.0.1:8080/api/phpinfo
+curl -i -H "X-Health-Token: wrong-token" https://api.sasd.de/health/phpinfo
 ```
 
-Expected behavior:
+Expected:
 
-- successful response
-- PHP information page is returned
-
-This confirms that the endpoint is protected correctly.
+- HTTP status `403`
+- plain text body `Forbidden`
 
 ---
 
-## 5. Local Development Testing
+## 6. Security Exposure Checks
 
-A simple local workflow can look like this.
+The service root is web-facing in the intended deployment model, so these checks are important.
 
-### 5.1 Start the Built-in PHP Server
+### 6.1 Direct Access to Internal Source Code
+
+Test:
 
 ```bash
-php -S 127.0.0.1:8080 -t public public/index.php
+curl -i https://api.sasd.de/health/src/Bootstrap.php
 ```
 
-### 5.2 Run Basic Requests
+Expected:
+
+- `403`, `404`, or another denied response depending on Apache behavior
+- source code must **not** be served
+
+### 6.2 Direct Access to `.env`
+
+Test:
 
 ```bash
-curl http://127.0.0.1:8080/api/health
-curl http://127.0.0.1:8080/api/health/time
-curl -i http://127.0.0.1:8080/api/phpinfo
+curl -i https://api.sasd.de/health/.env
 ```
 
-### 5.3 Check PHP Syntax
+Expected:
+
+- access denied or not found
+- the file must never be downloadable
+
+### 6.3 Direct Access to Documentation
+
+Test:
 
 ```bash
-find . -name "*.php" -print0 | xargs -0 -n1 php -l
+curl -i https://api.sasd.de/health/docs/DEVELOPER.md
 ```
 
-This is enough for a practical first testing round.
+Expected:
+
+- access denied or not found
 
 ---
 
-## 6. Suggested Regression Checklist
+## 7. Apache Path Handling Checks
 
-After every meaningful code change, test at least the following:
+### 7.1 MultiViews Behavior
 
-- `/api/health` returns `200`
-- `/api/health/time` returns `200`
-- invalid route returns `404`
-- wrong DB credentials return `503`
-- `phpinfo()` remains disabled unless intentionally enabled
-- enabled `phpinfo()` still requires a valid token
-- no internal error details appear in responses
+The service should not produce `300 Multiple Choices` responses caused by Apache content negotiation.
 
-This checklist is especially helpful before pushing changes to GitHub or deploying to a server.
-
----
-
-## 7. Production Verification
-
-After deployment, run a small production-oriented smoke test.
-
-Example:
+Test:
 
 ```bash
-curl -i https://health.example.com/api/health
-curl -i https://health.example.com/api/health/time
+curl -i https://api.sasd.de/health/time
 ```
 
-Confirm:
+Expected:
 
-- HTTPS works
-- correct status codes are returned
-- expected JSON format is returned
-- no debug output is visible
-- `phpinfo()` is disabled unless explicitly needed
+- application response, not Apache content-negotiation output
 
-Also inspect:
+If you see `300 Multiple Choices`, verify that `Options -MultiViews` is still present in `.htaccess`.
 
-- web server logs
-- PHP logs
-- reverse proxy logs
-- firewall behavior if restrictions are configured
+### 7.2 Placeholder Files
+
+If the service does not respond and a generic hosting page appears, check whether a placeholder `index.html` is masking the application.
 
 ---
 
-## 8. Response Validation
+## 8. HEAD Request Checks
 
-In a small service like this, response consistency matters.
+The service supports `HEAD` for `/health` and `/health/time`.
 
-### Successful Health Check
-
-- status code: `200`
-- content type: JSON
-- keys: `status`, `database`
-
-### Successful Time Request
-
-- status code: `200`
-- content type: JSON
-- keys: `status`, `database`, `db_time`
-
-### Error Case
-
-- status code: typically `503`
-- content type: JSON
-- no sensitive internal details
-
-### Unknown Route
-
-- status code: `404`
-- minimal error response
-
----
-
-## 9. Negative Testing Ideas
-
-Negative testing is particularly useful here because the service must fail safely.
-
-Try these scenarios:
-
-- database host unreachable
-- wrong database port
-- wrong database name
-- wrong database password
-- missing `.env`
-- incomplete `.env`
-- missing `pdo_mysql`
-- invalid token for `phpinfo()`
-- request to undefined route
-
-The expected result is not just failure. The expected result is controlled, quiet, minimal failure.
-
----
-
-## 10. Future Automated Testing
-
-If the project grows, automated tests can be added.
-
-Possible next steps:
-
-- PHPUnit for response behavior
-- integration test setup with a dedicated MySQL container
-- CI pipeline for syntax and smoke tests
-- simple shell test scripts for deployment checks
-
-For the current size of the service, a lightweight approach is usually enough.
-
-A good balance would be:
-
-- syntax checks
-- a few manual endpoint tests
-- one repeatable smoke test script
-
----
-
-## 11. Example Smoke Test Script
-
-A very small shell-based smoke test could look like this:
+Test:
 
 ```bash
-#!/usr/bin/env bash
-set -e
-
-BASE_URL="http://127.0.0.1:8080"
-
-echo "Testing /api/health"
-curl -fsS "$BASE_URL/api/health" > /dev/null
-
-echo "Testing /api/health/time"
-curl -fsS "$BASE_URL/api/health/time" > /dev/null
-
-echo "Smoke tests passed"
+curl -I https://api.sasd.de/health
+curl -I https://api.sasd.de/health/time
 ```
 
-This is often enough for a minimal service.
+Expected:
+
+- appropriate status codes
+- headers present
+- no response body
 
 ---
 
-## 12. Common Testing Mistakes
+## 9. Manual Regression Checklist
 
-Avoid these mistakes:
+Before publishing a new version, confirm:
 
-- testing only the happy path
-- not testing wrong credentials
-- enabling `phpinfo()` and forgetting to disable it again
-- checking only browser output and not status codes
-- forgetting to verify that error responses stay generic
-- skipping syntax validation before deployment
-
----
-
-## 13. Recommended Minimum Testing Standard
-
-For this project, a practical minimum standard would be:
-
-1. syntax check all PHP files
-2. test `/api/health`
-3. test `/api/health/time`
-4. test one failure scenario with invalid DB credentials
-5. verify that `phpinfo()` is disabled by default
-6. verify that no internal error details are exposed
-
-That is already enough to cover the most important risks in this service.
+- routing works locally
+- routing works under `/health` in staging or production-like hosting
+- valid DB config returns success
+- invalid DB config returns generic `503`
+- unknown routes return generic `404`
+- `phpinfo()` is disabled by default
+- `phpinfo()` accepts only the correct token
+- `.env` is not accessible
+- `src/` and `docs/` are not accessible
+- no verbose errors leak to the client
 
 ---
 
-## 14. Final Recommendation
+## 10. Final Recommendation
 
-Keep testing proportional to the size of the service.
-
-This is a small infrastructure component. It does not need a huge testing framework, but it does need disciplined checks around:
-
-- correct routing
-- safe database connectivity
-- controlled failure behavior
-- limited information disclosure
-- protected administrative functionality
-
-In this project, good testing means confirming not only that the service works, but that it fails quietly and safely.
+Because the service is intentionally small, manual smoke tests are already valuable. Focus on routing correctness, minimal failure behavior, and protection of internal files. Those areas are especially important in the shared-hosting subfolder deployment model.

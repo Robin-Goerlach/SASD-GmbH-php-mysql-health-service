@@ -1,91 +1,75 @@
-# API Reference
+# API_REFERENCE.md
 
-## SASD GmbH PHP MySQL Health Service
+## API Reference
 
-This document describes the public API of the **SASD GmbH PHP MySQL Health Service** from the perspective of a consumer or integration user.
+This document describes the public HTTP interface of the **SASD GmbH PHP MySQL Health Service** for service consumers such as monitoring systems, deployment scripts, reverse proxies, and administrators.
 
-It explains the available endpoints, expected request formats, response structures, status codes, security behavior, and integration recommendations.
+This edition assumes the service is deployed below:
+
+- `https://api.sasd.de/health`
+
+The same code can also run locally at `/`, but this document focuses on the production-facing service URLs.
 
 ---
 
 ## 1. Overview
 
-The service provides a small REST-style HTTP API for health and diagnostics.
+The service exposes three endpoints:
 
-Its main purpose is to allow external systems, administrators, or monitoring tools to verify that:
+- `GET /health`
+- `GET /health/time`
+- `GET /health/phpinfo`
 
-- the service is reachable
-- the application is running
-- the MySQL database connection is alive
-- the database can return the current server time
-
-An optional diagnostic endpoint for `phpinfo()` is also available, but it is disabled by default and protected by token-based access control.
+The service is intentionally minimal and does not expose internal connection details, SQL errors, stack traces, or other sensitive runtime information.
 
 ---
 
-## 2. Base URL
+## 2. Common Behavior
 
-The exact base URL depends on your deployment.
+### Directory-Style URL Note
 
-Example:
+Because the service is typically deployed in a real `health/` directory, some Apache setups may redirect `/health` to `/health/`. Consumers should simply follow that redirect. The service normalizes the trailing slash.
 
-```text
-https://health.example.com
-```
 
-All endpoints described below are relative to that base URL.
+### Content Type
 
----
-
-## 3. Content Type
-
-Unless otherwise noted, the API returns:
+JSON endpoints return:
 
 ```http
 Content-Type: application/json; charset=utf-8
 ```
 
-The `phpinfo()` endpoint is the exception and returns HTML output when enabled and successfully accessed.
+### Cache Control
+
+Health responses are sent with no-cache headers.
+
+### Error Detail Policy
+
+If something goes wrong, the service returns generic responses. It does not expose DSNs, exception messages, or SQL details.
 
 ---
 
-## 4. General Behavior
+## 3. Endpoint: Health Check
 
-The service is intentionally minimal and security-focused.
-
-It does **not** expose internal information such as:
-
-- database credentials
-- DSNs
-- stack traces
-- SQL statements
-- SQL error details
-- internal file paths
-- framework internals
-
-If an internal error occurs, the service returns only a generic error response.
-
----
-
-## 5. Endpoints
-
-### 5.1 Health Check
-
-Checks whether the service can establish a live connection to the configured MySQL database.
-
-#### Request
+### Request
 
 ```http
-GET /api/health
+GET /health
 ```
 
-#### Authentication
+### Purpose
 
-No authentication required.
+Checks whether the service can establish a live MySQL connection.
 
-#### Successful Response
+### Success Response
 
-**Status:** `200 OK`
+#### Status
+
+```http
+200 OK
+```
+
+#### Body
 
 ```json
 {
@@ -94,9 +78,15 @@ No authentication required.
 }
 ```
 
-#### Error Response
+### Failure Response
 
-**Status:** `503 Service Unavailable`
+#### Status
+
+```http
+503 Service Unavailable
+```
+
+#### Body
 
 ```json
 {
@@ -104,40 +94,35 @@ No authentication required.
 }
 ```
 
-#### Intended Use
+### Example
 
-Use this endpoint for:
-
-- uptime checks
-- reverse proxy health checks
-- container liveness checks
-- orchestration probes
-- external monitoring
-- internal service diagnostics
-
-#### Notes
-
-This endpoint is the recommended default endpoint for automated monitoring.
+```bash
+curl -i https://api.sasd.de/health
+```
 
 ---
 
-### 5.2 Database Time
+## 4. Endpoint: Database Time
 
-Checks the database connection and returns the current database server time in a formatted string.
-
-#### Request
+### Request
 
 ```http
-GET /api/health/time
+GET /health/time
 ```
 
-#### Authentication
+### Purpose
 
-No authentication required.
+Returns the current time directly from the MySQL server.
 
-#### Successful Response
+### Success Response
 
-**Status:** `200 OK`
+#### Status
+
+```http
+200 OK
+```
+
+#### Body
 
 ```json
 {
@@ -147,17 +132,15 @@ No authentication required.
 }
 ```
 
-#### Response Fields
+### Failure Response
 
-| Field | Type | Description |
-|---|---|---|
-| `status` | string | General result status. Expected value: `ok`. |
-| `database` | string | Database connectivity result. Expected value: `ok`. |
-| `db_time` | string | Current database server time formatted as `DD.MM.YYYY:HH:MM`. |
+#### Status
 
-#### Error Response
+```http
+503 Service Unavailable
+```
 
-**Status:** `503 Service Unavailable`
+#### Body
 
 ```json
 {
@@ -165,377 +148,193 @@ No authentication required.
 }
 ```
 
-#### Intended Use
+### Example
 
-Use this endpoint when you want to:
-
-- verify that the DB connection works
-- verify that queries can be executed
-- compare application time with database time
-- validate time-related infrastructure behavior
-
-#### Notes
-
-This endpoint should be used only when the database time is actually needed. For routine health monitoring, `/api/health` is usually sufficient.
+```bash
+curl -i https://api.sasd.de/health/time
+```
 
 ---
 
-### 5.3 PHP Information
+## 5. Endpoint: Protected phpinfo
 
-Returns the output of PHP's built-in `phpinfo()` function.
-
-This endpoint is intended only for temporary diagnostics and administration.
-
-#### Request
+### Request
 
 ```http
-GET /api/phpinfo
+GET /health/phpinfo
 ```
 
-#### Authentication
+### Purpose
 
-This endpoint is protected.
+Displays PHP runtime information for diagnostics.
 
-It requires:
+This endpoint is optional, disabled by default, and should be treated as an administrative capability rather than a public API feature.
 
-- `APP_PHPINFO_ENABLED=true` in server configuration
-- a valid token
+### Authentication
 
-The token can be supplied in one of two ways.
+Access is granted only when:
 
-##### Option 1: HTTP Header
+- `APP_PHPINFO_ENABLED=true`
+- the caller sends the correct token
+
+### Supported Token Delivery
+
+#### Header-based
 
 ```http
-X-Health-Token: your-secret-token
+X-Health-Token: your-token
 ```
 
-##### Option 2: Query Parameter
+#### Query parameter fallback
 
 ```http
-GET /api/phpinfo?token=your-secret-token
+GET /health/phpinfo?token=your-token
 ```
 
-#### Successful Response
+### Success Response
 
-**Status:** `200 OK`
+#### Status
 
-**Content-Type:** typically `text/html`
+```http
+200 OK
+```
 
-Response body:
+#### Body
 
-- standard `phpinfo()` HTML output
+HTML output generated by `phpinfo()`.
 
-#### Error Responses
+### Disabled Response
 
-##### Endpoint disabled
+#### Status
 
-**Status:** `404 Not Found`
+```http
+404 Not Found
+```
 
-Example response:
+#### Body
+
+```text
+Not Found
+```
+
+### Unauthorized Response
+
+#### Status
+
+```http
+403 Forbidden
+```
+
+#### Body
+
+```text
+Forbidden
+```
+
+### Examples
+
+```bash
+curl -i -H "X-Health-Token: your-token" https://api.sasd.de/health/phpinfo
+```
+
+```bash
+curl -i "https://api.sasd.de/health/phpinfo?token=your-token"
+```
+
+---
+
+## 6. Unknown Routes
+
+If the caller requests an unsupported path below the service, the service returns:
+
+#### Status
+
+```http
+404 Not Found
+```
+
+#### Body
 
 ```json
 {
-  "status": "error"
+  "status": "error",
+  "message": "Not Found"
 }
 ```
-
-##### Missing or invalid token
-
-**Status:** `403 Forbidden`
-
-Example response:
-
-```json
-{
-  "status": "error"
-}
-```
-
-#### Intended Use
-
-Use this endpoint only for:
-
-- temporary diagnostics
-- PHP runtime inspection
-- extension verification
-- environment troubleshooting
-
-#### Security Recommendation
-
-Do not expose this endpoint publicly unless you have a very good reason.
-
-Recommended protections:
-
-- keep it disabled by default
-- use a long random token
-- restrict access by IP or VPN
-- use HTTPS only
-- disable it again after diagnostics are complete
-
----
-
-## 6. Status Codes
-
-The following HTTP status codes may be returned by the service.
-
-| Status Code | Meaning | Typical Cause |
-|---|---|---|
-| `200 OK` | Request processed successfully | Health check passed or `phpinfo()` returned successfully |
-| `403 Forbidden` | Access denied | Missing or invalid token for protected endpoint |
-| `404 Not Found` | Route not found or endpoint intentionally unavailable | Wrong path or disabled `phpinfo()` endpoint |
-| `405 Method Not Allowed` | HTTP method not allowed | Using `POST`, `PUT`, or another unsupported method |
-| `503 Service Unavailable` | Health check failed | Database connection error or internal availability problem |
-
----
-
-## 7. Supported HTTP Methods
-
-The service is read-only and currently supports only:
-
-- `GET`
-
-Requests using methods such as `POST`, `PUT`, `PATCH`, or `DELETE` are not supported.
-
-If such a method is used, the service may return:
-
-```http
-405 Method Not Allowed
-```
-
----
-
-## 8. Request Examples
-
-### 8.1 Basic Health Check
-
-```bash
-curl https://health.example.com/api/health
-```
-
-### 8.2 Database Time
-
-```bash
-curl https://health.example.com/api/health/time
-```
-
-### 8.3 Protected phpinfo with Header
-
-```bash
-curl -H "X-Health-Token: your-secret-token" \
-  https://health.example.com/api/phpinfo
-```
-
-### 8.4 Protected phpinfo with Query Parameter
-
-```bash
-curl "https://health.example.com/api/phpinfo?token=your-secret-token"
-```
-
----
-
-## 9. Response Conventions
-
-### 9.1 Minimal Success Responses
-
-The service uses deliberately small response bodies.
-
-This is intentional and part of the security design.
-
-### 9.2 Minimal Error Responses
-
-On failure, the service does not explain internal details.
 
 Example:
 
-```json
-{
-  "status": "error"
-}
+```bash
+curl -i https://api.sasd.de/health/unknown
 ```
 
-This means consumers should rely on:
+---
 
-- HTTP status codes
-- expected endpoint behavior
-- server-side logs for deeper analysis
+## 7. Supported Methods
 
-### 9.3 No Internal Diagnostics in API Output
+### JSON Endpoints
 
-The API is not intended to return:
+The service supports:
 
-- SQL error text
-- exception messages
-- stack traces
-- host details
-- connection strings
+- `GET`
+- `HEAD` for `/health` and `/health/time`
 
-This is by design.
+For `HEAD`, the service sends the HTTP status and headers without a response body.
+
+### phpinfo Endpoint
+
+The `phpinfo()` route supports only `GET`.
 
 ---
 
-## 10. Integration Guidance
+## 8. Typical Monitoring Usage
 
-### 10.1 Monitoring Systems
+### Basic availability check
 
-Recommended endpoint:
-
-```http
-GET /api/health
+```bash
+curl -fsS https://api.sasd.de/health
 ```
 
-Use this endpoint for periodic polling by:
+### Status-code-only check
 
-- uptime robots
-- load balancers
-- reverse proxies
-- Kubernetes probes
-- Docker health checks
-- internal observability tools
-
-### 10.2 Administrative Diagnostics
-
-Use:
-
-```http
-GET /api/health/time
+```bash
+curl -o /dev/null -s -w "%{http_code}
+" https://api.sasd.de/health
 ```
 
-when you need confirmation that the database is not only reachable, but also responding to SQL queries correctly.
+### Database time validation
 
-### 10.3 PHP Runtime Inspection
-
-Use:
-
-```http
-GET /api/phpinfo
+```bash
+curl -fsS https://api.sasd.de/health/time
 ```
 
-only for controlled, temporary diagnostics.
+### Administrative diagnostics
 
-This endpoint is not intended for routine monitoring.
-
----
-
-## 11. Security Considerations for API Consumers
-
-Consumers of this API should be aware of the following:
-
-- `/api/health` and `/api/health/time` may be suitable for monitoring, but should still be protected from abuse if exposed on the public internet.
-- `/api/phpinfo` should be considered sensitive.
-- Tokens used for protected endpoints must be handled as secrets.
-- Query-parameter tokens may appear in logs or browser history; headers are usually preferable.
-- Always use HTTPS in production.
-
----
-
-## 12. Caching
-
-The service is intended for live operational checks.
-
-Responses should not be cached by clients, proxies, or CDNs.
-
-If you integrate the API into infrastructure, configure those systems to avoid caching health responses.
-
----
-
-## 13. Versioning
-
-At the moment, the service does not expose explicit API versioning in the URL.
-
-Current path style:
-
-```text
-/api/health
-/api/health/time
-/api/phpinfo
+```bash
+curl -fsS -H "X-Health-Token: your-token" https://api.sasd.de/health/phpinfo
 ```
 
-If the service evolves in the future, versioning may be introduced through path-based routing such as:
+---
 
-```text
-/api/v1/health
-```
+## 9. Security Notes for Consumers
 
-Until then, consumers should treat the current API as a small, deployment-specific operational interface.
+Consumers of this API should keep the following in mind:
+
+- do not expect detailed failure diagnostics in the response body
+- protect any stored `phpinfo()` token carefully
+- prefer the header-based token instead of putting tokens into logs or browser history through query strings
+- do not use `/health/phpinfo` as a public-facing endpoint
 
 ---
 
-## 14. Error Handling Expectations
+## 10. Stability Notes
 
-As an API user, interpret responses as follows:
+The service is intentionally small and the API surface is narrow.
 
-- `200` means the endpoint succeeded
-- `503` means the service is reachable but the health check failed
-- `403` means authorization failed for a protected endpoint
-- `404` means the route does not exist or the endpoint is disabled
-- `405` means the HTTP method is not supported
+Consumers should treat the following as the stable core of the service:
 
-Do not expect descriptive internal error messages in the response body.
+- `/health`
+- `/health/time`
+- the generic error design philosophy
 
----
-
-## 15. Compatibility Expectations
-
-This API is designed for simple operational use.
-
-Typical compatible clients include:
-
-- `curl`
-- shell scripts
-- monitoring agents
-- reverse proxies
-- browser-based manual checks
-- backend integration scripts
-
-No special SDK is required.
-
----
-
-## 16. Best Practices for Consumers
-
-Use the API in the following way:
-
-- prefer `/api/health` for routine availability checks
-- use `/api/health/time` only when database time is relevant
-- use header-based token authentication for `/api/phpinfo`
-- do not automate routine polling of `/api/phpinfo`
-- treat all protected endpoint tokens as secrets
-- handle `503` as an operational alert, not as a parsing failure
-
----
-
-## 17. Example Monitoring Logic
-
-A monitoring system can interpret the API like this:
-
-- `200` from `/api/health` → service healthy
-- `503` from `/api/health` → application reachable, but DB health failed
-- timeout / connection failure → service unreachable
-- `403` on `/api/phpinfo` → authentication or authorization problem
-
----
-
-## 18. Contact Between Consumer and Operator
-
-If you are a consumer of the service and repeated failures occur, contact the service operator and provide:
-
-- timestamp of the request
-- endpoint used
-- HTTP status code returned
-- whether the issue is persistent or intermittent
-- relevant correlation or request identifiers if your infrastructure adds them
-
----
-
-## 19. Summary
-
-The API is intentionally small, stable in purpose, and conservative in what it reveals.
-
-For most users, the important points are:
-
-- use `GET /api/health` for health checks
-- use `GET /api/health/time` for DB time checks
-- use `GET /api/phpinfo` only when explicitly enabled and authorized
-- rely on HTTP status codes rather than verbose error bodies
-- treat the service as an operational endpoint, not a general diagnostics API
-
+Any future expansion should preserve the same minimal and security-focused style.

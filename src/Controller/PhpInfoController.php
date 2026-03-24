@@ -9,6 +9,10 @@ final class PhpInfoController
 {
     public function show(): void
     {
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('X-Content-Type-Options: nosniff');
+
         $enabled = Env::getBool('APP_PHPINFO_ENABLED', false);
         $expectedToken = Env::get('APP_PHPINFO_TOKEN', '');
         $providedToken = $this->extractToken();

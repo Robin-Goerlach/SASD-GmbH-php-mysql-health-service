@@ -2,57 +2,41 @@
 
 ## Security Policy
 
-Thank you for helping to keep the **SASD GmbH PHP MySQL Health Service** secure.
+Thank you for helping improve the security of the **SASD GmbH PHP MySQL Health Service**.
 
-This project is intentionally small and security-focused. Its purpose is to provide a minimal RESTful health endpoint for MySQL connectivity checks, a database time endpoint, and an optional protected `phpinfo()` endpoint. Because the service may handle credentials and infrastructure-related information, responsible security handling is important.
-
----
-
-## Supported Versions
-
-Security fixes are normally provided for the latest maintained version of the project.
-
-If multiple tagged releases exist in the future, the maintainers may define a more detailed support matrix. Until then, users should assume that only the current main development line is actively maintained.
-
-| Version | Supported |
-| ------- | --------- |
-| Latest main branch | Yes |
-| Older releases | Best effort |
-| Unmaintained forks | No |
+This project is intentionally small, but it still deals with infrastructure visibility, deployment details, and database connectivity. That makes security relevant even for a compact codebase.
 
 ---
 
 ## Reporting a Vulnerability
 
-Please **do not open a public GitHub issue** for security vulnerabilities.
+Please do **not** report security vulnerabilities through public issues, public pull requests, or any other public channel.
 
-Instead, report security concerns privately to the maintainer or project owner using a private channel such as email or another agreed confidential contact path.
+Instead, contact the maintainer privately through an agreed trusted channel.
 
-A good vulnerability report should include:
+When reporting a problem, please include:
 
-- a short summary of the issue
-- the affected endpoint or component
-- the potential impact
-- clear reproduction steps
-- configuration details if relevant
-- suggested mitigation if known
+- a clear description of the issue
+- affected version or commit
+- reproduction steps
+- expected behavior
+- actual behavior
+- potential impact
+- any suggested mitigation, if available
 
-If you are unsure whether something is security-relevant, it is still better to report it privately first.
+Please keep reports factual and as complete as possible.
 
 ---
 
-## What to Report
+## Scope
 
-Please report issues such as:
+Relevant security topics include, for example:
 
-- authentication bypass for the `phpinfo()` endpoint
-- accidental disclosure of environment variables or secrets
-- SQL error leakage
-- stack trace leakage
-- path disclosure
+- authentication bypass on the `phpinfo()` endpoint
+- unintended exposure of `.env`, `src/`, `vendor/`, or `docs/`
+- information leakage through error responses
+- path handling or rewrite problems that reveal internal files
 - unsafe default configuration
-- access control weaknesses
-- request handling problems that could expose internal information
 - denial-of-service weaknesses caused by malformed requests
 - insecure deployment recommendations in the documentation
 
@@ -72,7 +56,7 @@ The following are usually out of scope unless they create a real security impact
 
 ## Security Design Goals
 
-This service follows a few core security principles:
+This service follows a few core security principles.
 
 ### Minimal Information Disclosure
 
@@ -96,6 +80,12 @@ If a check fails, the external response should remain intentionally minimal.
 - HTTPS should be used in production
 - access should be restricted where possible
 
+### Shared Hosting Awareness
+
+In this deployment model, the service root is web-facing as the `/health` folder below a shared `api.sasd.de` host.
+
+That means Apache access rules are part of the security boundary. The provided `.htaccess` file is therefore security-relevant, not just convenient.
+
 ### Operational Simplicity
 
 This project is small on purpose. Please avoid changes that turn a minimal health service into a broad diagnostics interface.
@@ -113,6 +103,8 @@ Operators of this service should:
 - store `.env` securely
 - use strong and unique database credentials
 - use a dedicated database account with minimal privileges
+- keep `Options -MultiViews` in place
+- verify that direct access to `src/`, `vendor/`, and `docs/` is denied
 - monitor logs for repeated failures or unauthorized requests
 
 ---
