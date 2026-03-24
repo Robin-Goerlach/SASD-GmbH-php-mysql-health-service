@@ -1,116 +1,52 @@
-# PHP RESTful API Health Service
+# SASD GmbH PHP MySQL Health Service
 
-Ein kleiner, sicher gehaltener Health-Service für PHP mit MySQL-Live-Check.
+A minimal, security-focused RESTful PHP health service for MySQL.
 
-## Funktionen
+It provides a safe live database check, a database time endpoint, and an optional protected `phpinfo()` endpoint without exposing sensitive connection details, SQL errors, DSNs, or internal stack traces.
+
+## Features
 
 - `GET /api/health`  
-  Prüft, ob die Datenbankverbindung grundsätzlich funktioniert.
+  Performs a basic live database connectivity check.
+
 - `GET /api/health/time`  
-  Liefert die aktuelle Uhrzeit direkt von der Datenbank.
+  Returns the current time directly from the database server.
+
 - `GET /api/phpinfo`  
-  Optionaler, standardmäßig deaktivierter `phpinfo()`-Endpunkt.
+  Optional `phpinfo()` endpoint, disabled by default and protected by token authentication.
 
-## Sicherheitsprinzip
+## Security Principles
 
-Nach außen werden absichtlich keine sensiblen Verbindungsdaten, keine DSNs, keine SQL-Fehler und keine Stacktraces ausgegeben. Bei Problemen liefert der Service nur eine generische Antwort.
+This service is intentionally designed to reveal as little as possible to the outside world.
 
-Der `phpinfo()`-Endpunkt ist:
+It does **not** expose:
 
-- standardmäßig **deaktiviert**,
-- nur per `.env` aktivierbar,
-- zusätzlich über ein Token geschützt.
+- database credentials
+- DSNs
+- SQL error messages
+- stack traces
+- internal exception details
 
-## Voraussetzungen
+If something fails, the service returns only a generic error response.
 
-- PHP 8.1 oder neuer
+The `phpinfo()` endpoint is:
+
+- disabled by default
+- enabled only through `.env`
+- additionally protected with a token
+
+## Requirements
+
+- PHP 8.1 or newer
 - PDO
 - `pdo_mysql`
-- Webserver mit Document Root auf `public/`
+- A web server with its document root pointing to `public/`
 
 ## Installation
 
-### 1. Projekt entpacken
+### 1. Clone or extract the project
 
-### 2. Composer Autoload-Datei erzeugen
+### 2. Install dependencies
 
 ```bash
 composer install
-```
-
-### 3. `.env` anlegen
-
-```bash
-cp .env.example .env
-```
-
-Danach Werte in `.env` anpassen.
-
-## Entwicklung mit eingebautem PHP-Server
-
-```bash
-php -S 127.0.0.1:8080 -t public public/index.php
-```
-
-## Endpunkte
-
-### Health Check
-
-```http
-GET /api/health
-```
-
-Beispielantwort:
-
-```json
-{
-  "status": "ok",
-  "database": "ok"
-}
-```
-
-### Datenbankzeit
-
-```http
-GET /api/health/time
-```
-
-Beispielantwort:
-
-```json
-{
-  "status": "ok",
-  "database": "ok",
-  "db_time": "24.03.2026:16:42"
-}
-```
-
-### phpinfo
-
-Nur wenn in `.env` aktiviert:
-
-```env
-APP_PHPINFO_ENABLED=true
-APP_PHPINFO_TOKEN=ein-langes-zufaelliges-token
-```
-
-Aufruf dann mit Header:
-
-```http
-GET /api/phpinfo
-X-Health-Token: ein-langes-zufaelliges-token
-```
-
-Alternativ mit Query-Parameter:
-
-```http
-GET /api/phpinfo?token=ein-langes-zufaelliges-token
-```
-
-## Apache-Hinweis
-
-Der Document Root sollte auf `public/` zeigen. Eine kleine `.htaccess` liegt bei.
-
-## Wichtige Empfehlung
-
-Lege die `.env` außerhalb des öffentlich erreichbaren Webroots ab oder sorge per Serverkonfiguration dafür, dass sie nie ausgeliefert werden kann.

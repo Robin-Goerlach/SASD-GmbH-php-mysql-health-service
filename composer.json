@@ -1,6 +1,6 @@
 {
   "name": "sasd/php-health-service",
-  "description": "Minimal RESTful health service for PHP/MySQL with optional protected phpinfo endpoint",
+  "description": "Minimal security-focused RESTful PHP health service for MySQL with live DB check and optional protected phpinfo endpoint",
   "type": "project",
   "license": "MIT",
   "require": {
