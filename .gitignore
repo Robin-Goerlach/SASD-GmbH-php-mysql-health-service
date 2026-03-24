@@ -1,0 +1,44 @@
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Composer
+/vendor/
+
+# Logs
+*.log
+logs/
+var/log/
+storage/logs/
+
+# Cache / runtime
+cache/
+tmp/
+temp/
+var/cache/
+var/tmp/
+storage/cache/
+storage/tmp/
+
+# Test / coverage
+coverage/
+.phpunit.result.cache
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local webserver / tooling artifacts
+/.php-server-router.php
+
+# Optional generated reports
+report/
+reports/

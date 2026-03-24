@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Direkte Zugriffe auf vorhandene Dateien zulassen
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Alle anderen Requests an index.php übergeben
+RewriteRule ^ index.php [QSA,L]

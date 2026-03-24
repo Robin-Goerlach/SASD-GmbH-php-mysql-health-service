@@ -1,111 +1,66 @@
-# SASD-GmbH PHP Health Service
-Minimal, security-focused RESTful PHP health service for MySQL. Provides a safe live database check, a database time endpoint, and optional protected phpinfo access without exposing sensitive connection details or internal error information.
+# PHP RESTful API Health Service
 
-This project reads database connection settings from a `.env` file, performs a live MySQL connectivity check, and exposes minimal HTTP endpoints for health monitoring without leaking sensitive configuration details.
+Ein kleiner, sicher gehaltener Health-Service für PHP mit MySQL-Live-Check.
 
-## Features
+## Funktionen
 
-- `GET /api/health` — verifies that the application can connect to the database
-- `GET /api/health/time` — returns the current database server time
-- `GET /api/phpinfo` — optional `phpinfo()` endpoint, disabled by default and protected by a token
-- minimal JSON responses with no DSN, SQL error text, stack traces, or credentials exposed
-- simple structure based on plain PHP and PDO
+- `GET /api/health`  
+  Prüft, ob die Datenbankverbindung grundsätzlich funktioniert.
+- `GET /api/health/time`  
+  Liefert die aktuelle Uhrzeit direkt von der Datenbank.
+- `GET /api/phpinfo`  
+  Optionaler, standardmäßig deaktivierter `phpinfo()`-Endpunkt.
 
-## Security Approach
+## Sicherheitsprinzip
 
-The service is intentionally conservative.
+Nach außen werden absichtlich keine sensiblen Verbindungsdaten, keine DSNs, keine SQL-Fehler und keine Stacktraces ausgegeben. Bei Problemen liefert der Service nur eine generische Antwort.
 
-External responses do not reveal:
+Der `phpinfo()`-Endpunkt ist:
 
-- database host names
-- database names
-- usernames
-- SQL statements
-- exception messages
-- stack traces
+- standardmäßig **deaktiviert**,
+- nur per `.env` aktivierbar,
+- zusätzlich über ein Token geschützt.
 
-If the database check fails, the service returns only a generic error response. Internally, failures can still be logged by the runtime environment.
+## Voraussetzungen
 
-The `phpinfo()` endpoint is:
-
-- disabled by default
-- enabled only through configuration
-- protected by a token
-
-## Requirements
-
-- PHP 8.1 or newer
+- PHP 8.1 oder neuer
 - PDO
 - `pdo_mysql`
-- a web server with its document root pointing to `public/`
-
-## Project Structure
-
-```text
-public/
-  index.php
-src/
-  Bootstrap.php
-  Controller/
-    HealthController.php
-    PhpInfoController.php
-  Infrastructure/
-    Database/
-      DatabaseConnectionFactory.php
-  Support/
-    Env.php
-    JsonResponse.php
-composer.json
-README.md
-```
+- Webserver mit Document Root auf `public/`
 
 ## Installation
 
-### 1. Install dependencies
+### 1. Projekt entpacken
+
+### 2. Composer Autoload-Datei erzeugen
 
 ```bash
 composer install
 ```
 
-### 2. Create your environment file
+### 3. `.env` anlegen
 
 ```bash
 cp .env.example .env
 ```
 
-Then adjust the values in `.env`.
+Danach Werte in `.env` anpassen.
 
-Example:
-
-```env
-APP_ENV=prod
-APP_DEBUG=false
-APP_PHPINFO_ENABLED=false
-APP_PHPINFO_TOKEN=change-this-to-a-long-random-token
-
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_NAME=your_database
-DB_USER=your_user
-DB_PASS=your_password
-DB_CHARSET=utf8mb4
-```
-
-### 3. Run locally
+## Entwicklung mit eingebautem PHP-Server
 
 ```bash
 php -S 127.0.0.1:8080 -t public public/index.php
 ```
 
-## Endpoints
+## Endpunkte
 
-### Health check
+### Health Check
 
 ```http
 GET /api/health
 ```
 
-Example response:
+Beispielantwort:
 
 ```json
 {
@@ -114,13 +69,13 @@ Example response:
 }
 ```
 
-### Database time
+### Datenbankzeit
 
 ```http
 GET /api/health/time
 ```
 
-Example response:
+Beispielantwort:
 
 ```json
 {
@@ -130,59 +85,32 @@ Example response:
 }
 ```
 
-### Protected phpinfo endpoint
+### phpinfo
 
-The endpoint is available only when explicitly enabled in `.env`:
+Nur wenn in `.env` aktiviert:
 
 ```env
 APP_PHPINFO_ENABLED=true
-APP_PHPINFO_TOKEN=replace-with-a-long-random-token
+APP_PHPINFO_TOKEN=ein-langes-zufaelliges-token
 ```
 
-Request with header:
+Aufruf dann mit Header:
 
 ```http
 GET /api/phpinfo
-X-Health-Token: replace-with-a-long-random-token
+X-Health-Token: ein-langes-zufaelliges-token
 ```
 
-Or with query parameter:
+Alternativ mit Query-Parameter:
 
 ```http
-GET /api/phpinfo?token=replace-with-a-long-random-token
+GET /api/phpinfo?token=ein-langes-zufaelliges-token
 ```
 
-## Notes on Database Time
+## Apache-Hinweis
 
-The MySQL query behind the time endpoint is equivalent to:
+Der Document Root sollte auf `public/` zeigen. Eine kleine `.htaccess` liegt bei.
 
-```sql
-SELECT DATE_FORMAT(NOW(), '%d.%m.%Y:%H:%i') AS db_time;
-```
+## Wichtige Empfehlung
 
-For Oracle, the comparable query would be:
-
-```sql
-SELECT TO_CHAR(SYSDATE, 'DD.MM.YYYY:HH24:MI') AS db_time FROM dual;
-```
-
-## Deployment Notes
-
-- point your web server document root to `public/`
-- keep `.env` outside the public web root if possible
-- never enable `phpinfo()` in production unless there is a very good reason
-- if you enable it temporarily, protect it with a strong token and disable it again afterwards
-
-## Intended Use Cases
-
-This service is useful for:
-
-- uptime monitoring
-- deployment smoke tests
-- reverse proxy and load balancer checks
-- container health probes
-- simple infrastructure diagnostics
-
-## License
-
-MIT
+Lege die `.env` außerhalb des öffentlich erreichbaren Webroots ab oder sorge per Serverkonfiguration dafür, dass sie nie ausgeliefert werden kann.

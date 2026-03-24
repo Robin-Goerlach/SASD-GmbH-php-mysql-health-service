@@ -1,0 +1,14 @@
+{
+  "name": "sasd/php-health-service",
+  "description": "Minimal RESTful health service for PHP/MySQL with optional protected phpinfo endpoint",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "Sasd\\HealthService\\": "src/"
+    }
+  }
+}
